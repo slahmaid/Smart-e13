@@ -389,6 +389,9 @@
             font-size: 1rem; background: #F8FAFC; transition: border-color 0.2s;
         }
         .form-input:focus { outline: none; border-color: var(--accent-blue); background: white; }
+        
+        /* Disabled state for button during submission */
+        .submit-btn:disabled { background-color: #94A3B8; cursor: not-allowed; }
 
         .order-summary {
             background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 12px; padding: 16px; margin-bottom: 24px;
@@ -750,25 +753,25 @@
             <h2>Finaliser ma commande</h2>
             <span class="cod-badge">✅ Paiement à la livraison</span>
         </div>
-        <form action="thankyou.html">
+        <form id="checkout-form">
             <div class="form-group">
                 <label class="form-label">Nom complet</label>
-                <input type="text" class="form-input" placeholder="Ex: Karim Alami" required>
+                <input id="input-name" type="text" class="form-input" placeholder="Ex: Karim Alami" required>
             </div>
             <div class="form-group">
                 <label class="form-label">Numéro de téléphone</label>
-                <input type="tel" class="form-input" placeholder="Ex: 06 12 34 56 78" required>
+                <input id="input-phone" type="tel" class="form-input" placeholder="Ex: 06 12 34 56 78" required>
             </div>
             <div class="form-group">
                 <label class="form-label">Ville & Adresse</label>
-                <input type="text" class="form-input" placeholder="Ex: Casablanca, Maarif..." required>
+                <input id="input-city" type="text" class="form-input" placeholder="Ex: Casablanca, Maarif..." required>
             </div>
             <div class="order-summary">
                 <div class="summary-row"><span>Produit</span><span>Smart Glasses Pro</span></div>
                 <div class="summary-row"><span>Livraison</span><span style="color:var(--accent-green); font-weight:600;">Gratuite</span></div>
                 <div class="summary-row summary-total"><span>Total à payer</span><span>249.99 Dh</span></div>
             </div>
-            <button type="submit" class="submit-btn">Payer plus tard</button>
+            <button type="submit" id="submit-btn" class="submit-btn">Payer plus tard</button>
         </form>
     </section>
 
@@ -860,6 +863,83 @@
                     } else {
                         panel.style.maxHeight = panel.scrollHeight + "px";
                     }
+                });
+            }
+
+            // 5. DATA SUBMISSION LOGIC
+            const checkoutForm = document.getElementById('checkout-form');
+            if (checkoutForm) {
+                checkoutForm.addEventListener('submit', function(e) {
+                    e.preventDefault(); // Stop standard HTML submit
+
+                    const btn = document.getElementById('submit-btn');
+                    const originalText = btn.innerText;
+                    
+                    // UI: Show loading
+                    btn.disabled = true;
+                    btn.innerText = "Traitement en cours...";
+
+                    // Get Data
+                    const name = document.getElementById('input-name').value;
+                    const phone = document.getElementById('input-phone').value;
+                    const city = document.getElementById('input-city').value;
+
+                    const formData = {
+                        name: name,
+                        phone: phone,
+                        address: city,
+                        orderDate: new Date().toISOString()
+                    };
+
+                    // --- SEND TO GOOGLE SHEETS ---
+                    // Using 'no-cors' is essential here. It means the browser sends the request
+                    // but doesn't wait for a readable response (which avoids CORS errors).
+                    // This is "Fire and Forget".
+                    const googleSheetUrl = "https://script.google.com/macros/s/AKfycbyOw140EfRPaBNLmBwBVH5C6u_yadum7t6A_hkk-rniUh2mJcGQp_mrEJU-1ZQGfFE/exec";
+                    
+                    const requestGoogle = fetch(googleSheetUrl, {
+                        method: "POST",
+                        mode: "no-cors", 
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
+                        body: JSON.stringify(formData)
+                    });
+
+                    // --- (OPTIONAL) SEND TO JSONBIN AS BACKUP ---
+                    // Note: Exposing your Master Key in public HTML is a security risk.
+                    // For a simple landing page it works, but be aware of this.
+                    const jsonBinUrl = "https://api.jsonbin.io/v3/b";
+                    const masterKey = "$2a$10$W7Y1w05rI7FhqCSUCB/tRuDJYO2fRlTwgv2s3je3OlExS3oOz9UzG";
+                    
+                    const requestBin = fetch(jsonBinUrl, {
+                        method: "POST",
+                        headers: {
+                            "Content-Type": "application/json",
+                            "X-Master-Key": masterKey,
+                            "X-Bin-Name": "Order-" + Date.now(), // Optional naming
+                            "X-Bin-Private": "true"
+                        },
+                        body: JSON.stringify(formData)
+                    });
+
+                    // Wait for the requests to trigger, then redirect
+                    // Since Google uses no-cors, we can't check if it succeeded or failed specifically.
+                    // We assume success if the code runs.
+                    Promise.all([requestGoogle, requestBin])
+                        .then(() => {
+                            window.location.href = "thankyou.html";
+                        })
+                        .catch(err => {
+                            console.error("Error:", err);
+                            // Even if error, we often redirect for UX, or show alert
+                            // alert("Une erreur est survenue, veuillez réessayer.");
+                            // btn.disabled = false;
+                            // btn.innerText = originalText;
+                            
+                            // Fallback redirect
+                            window.location.href = "thankyou.html";
+                        });
                 });
             }
         });
